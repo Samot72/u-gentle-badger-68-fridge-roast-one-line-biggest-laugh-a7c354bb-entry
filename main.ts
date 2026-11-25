@@ -53,6 +53,15 @@ function assertValid(line: string): number {
   if (/[\u0000-\u001f\u007f]/.test(line)) {
     throw new Error("roast must not contain control characters");
   }
+  // No invisible / zero-width characters: zero-width spaces, joiners,
+  // directional marks and BOMs are invisible to the reader but count
+  // toward the length gate, so a line carrying them would be judged
+  // differently than it looks on screen.
+  if (/[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/.test(line)) {
+    throw new Error(
+      "roast must not contain invisible or zero-width characters",
+    );
+  }
   return count;
 }
 
@@ -76,6 +85,16 @@ function assertDeterministic(line: string): void {
     }
     if (bytesA.toString("utf8") !== line) {
       throw new Error("determinism check failed: bytes do not match the roast");
+    }
+    // Byte-length check: the UTF-8 encoding must round-trip exactly.
+    // Counting characters alone hides multi-byte surprises (a line that
+    // looks 132 characters long could encode to a different byte count),
+    // so verify the written bytes are exactly the UTF-8 form of the line.
+    const expectedBytes = Buffer.byteLength(line, "utf8");
+    if (bytesA.length !== expectedBytes || bytesB.length !== expectedBytes) {
+      throw new Error(
+        `determinism check failed: expected ${expectedBytes} UTF-8 bytes, got ${bytesA.length} / ${bytesB.length}`,
+      );
     }
   } finally {
     rmSync(first, { recursive: true, force: true });
